@@ -1,0 +1,116 @@
+[
+  {
+    "name": "90s Anime",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Animals",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Art",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Celebrities",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Entertainment: Cartoon & Animations",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Entertainment: Film",
+    "_count": {
+      "Questions": 5
+    }
+  },
+  {
+    "name": "Entertainment: Japanese Anime & Manga",
+    "_count": {
+      "Questions": 3
+    }
+  },
+  {
+    "name": "Entertainment: Music",
+    "_count": {
+      "Questions": 7
+    }
+  },
+  {
+    "name": "Entertainment: Television",
+    "_count": {
+      "Questions": 3
+    }
+  },
+  {
+    "name": "Entertainment: Video Games",
+    "_count": {
+      "Questions": 9
+    }
+  },
+  {
+    "name": "General Knowledge",
+    "_count": {
+      "Questions": 6
+    }
+  },
+  {
+    "name": "Geography",
+    "_count": {
+      "Questions": 3
+    }
+  },
+  {
+    "name": "History",
+    "_count": {
+      "Questions": 5
+    }
+  },
+  {
+    "name": "Science & Nature",
+    "_count": {
+      "Questions": 2
+    }
+  },
+  {
+    "name": "Science: Computers",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Space Exploration",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Sports",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Tech History",
+    "_count": {
+      "Questions": 1
+    }
+  },
+  {
+    "name": "Vehicles",
+    "_count": {
+      "Questions": 1
+    }
+  }
+]

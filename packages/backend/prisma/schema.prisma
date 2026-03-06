@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  Questions Question[]
+}
+
+model Question {
+  id          String       @id @default(uuid())
+  text        String
+  answer      String
+  options     String[]     // The 4 multiple choice options to display
+  categoryId  String
+  category    Category     @relation(fields: [categoryId], references: [id])
+  globalStats GlobalStats?
+}
+
+model GlobalStats {
+  id             String   @id @default(uuid())
+  questionId     String   @unique
+  question       Question @relation(fields: [questionId], references: [id])
+  totalAttempts  Int      @default(0)
+  totalCorrect   Int      @default(0)
+}
+
+model RoomSession {
+  id                String   @id @default(uuid())
+  roomCode          String   @unique
+  playerList        Json     // Stores array of players [{ id, name, socketId, score }]
+  currentQuestionId String?
+  createdAt         DateTime @default(now())
+  status            String   @default("LOBBY") // LOBBY, CATEGORY_REVEAL, WAGER_PERIOD, QUESTION_LIVE, RESULTS
+}
