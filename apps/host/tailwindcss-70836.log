@@ -1,0 +1,45 @@
+2026-03-06T22:35:00.277362Z  INFO tailwindcss_oxide::scanner: Provided sources:
+2026-03-06T22:35:00.338759Z  INFO tailwindcss_oxide::scanner: Source: PublicSourceEntry { base: "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host", pattern: "**/*", negated: false }
+2026-03-06T22:35:00.339662Z  INFO tailwindcss_oxide::scanner: Optimized sources:
+2026-03-06T22:35:00.346200Z  INFO tailwindcss_oxide::scanner: Source: Auto { base: "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host" }
+2026-03-06T22:35:00.349178Z  INFO discover_sources: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.354298Z  INFO discover_sources:walk_synchronous: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.363323Z  INFO discover_sources:walk_synchronous: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.364185Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\eslint.config.mjs"
+2026-03-06T22:35:00.364226Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\public\\vercel.svg"
+2026-03-06T22:35:00.364258Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\next.config.ts"
+2026-03-06T22:35:00.364336Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\public\\globe.svg"
+2026-03-06T22:35:00.364356Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\public\\window.svg"
+2026-03-06T22:35:00.364360Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\package.json"
+2026-03-06T22:35:00.364362Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\postcss.config.mjs"
+2026-03-06T22:35:00.364458Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\public\\file.svg"
+2026-03-06T22:35:00.364483Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\README.md"
+2026-03-06T22:35:00.364481Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\public\\next.svg"
+2026-03-06T22:35:00.364520Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\src\\app\\layout.tsx"
+2026-03-06T22:35:00.364566Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\src\\app\\icon.svg"
+2026-03-06T22:35:00.364609Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\tsconfig.json"
+2026-03-06T22:35:00.364656Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\src\\app\\page.tsx"
+2026-03-06T22:35:00.364736Z  INFO tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\src\\lib\\socket.ts"
+2026-03-06T22:35:00.364888Z  INFO discover_sources: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.364914Z  INFO extract_candidates: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.364923Z  INFO extract_candidates:parse_all_blobs: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.364933Z  INFO extract_candidates:parse_all_blobs:extract: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.366058Z  INFO extract_candidates:parse_all_blobs:extract: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.366078Z  INFO extract_candidates:parse_all_blobs: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.366088Z  INFO extract_candidates:read_all_files: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.366095Z  INFO extract_candidates:read_all_files: tailwindcss_oxide::scanner: Reading 1 file(s)
+2026-03-06T22:35:00.366229Z  INFO extract_candidates:read_all_files: tailwindcss_oxide::scanner: Reading "C:\\Users\\Ash\\Documents\\Adaptive-Trivia-Game\\apps\\host\\src\\app\\globals.css"
+2026-03-06T22:35:00.366243Z  INFO extract_candidates:read_all_files: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.366314Z  INFO extract_candidates:extract_css_variables: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.366326Z  INFO extract_candidates:extract_css_variables:extract: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.366467Z  INFO extract_candidates:extract_css_variables:extract: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.366535Z  INFO extract_candidates:extract_css_variables: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.366764Z  INFO extract_candidates: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.367344Z  INFO get_files: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.367362Z  INFO get_files:discover_sources: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.367369Z  INFO get_files:discover_sources: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.367613Z  INFO get_files: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.368022Z  INFO get_globs: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.368045Z  INFO get_globs:discover_sources: tailwindcss_oxide::scanner: enter
+2026-03-06T22:35:00.368059Z  INFO get_globs:discover_sources: tailwindcss_oxide::scanner: exit
+2026-03-06T22:35:00.424410Z  INFO get_globs: tailwindcss_oxide::scanner: exit

@@ -12,6 +12,7 @@ export interface Player {
     isCorrect: boolean | null;
     hasWagered: boolean;
     hasAnswered: boolean;
+    isAllIn: boolean;
 }
 
 export interface Room {
@@ -28,6 +29,8 @@ export interface Room {
     timerState: NodeJS.Timeout | null;
     currentMultiplier: number;
     currentMinWagerPercentage: number;
+    totalQuestions: number;
+    survivorRound: number;
 }
 
 export class RoomManager {
@@ -75,14 +78,35 @@ export class RoomManager {
                 if (callback) callback({ success });
             });
 
-            socket.on('startGame', async (data: { roomCode: string; mode: 'STANDARD' | 'SURVIVOR'; numQuestions: number }, callback) => {
-                const success = await this.startGame(socket, data.roomCode, data.mode, data.numQuestions);
+            socket.on('startGame', async (data: { roomCode: string; mode: 'STANDARD' | 'SURVIVOR'; numQuestions: number; selectedCategories?: string[] }, callback) => {
+                const success = await this.startGame(socket, data.roomCode, data.mode, data.numQuestions, data.selectedCategories);
                 if (callback) callback({ success });
             });
 
             socket.on('returnToLobby', (data: { roomCode: string }, callback) => {
                 const success = this.returnToLobby(socket, data.roomCode);
                 if (callback) callback({ success });
+            });
+
+            socket.on('kickPlayer', (data: { roomCode: string; playerId: string }, callback) => {
+                const success = this.kickPlayer(socket, data.roomCode, data.playerId);
+                if (callback) callback({ success });
+            });
+
+            socket.on('requestCategories', async (callback) => {
+                try {
+                    const cats = await this.prisma.category.findMany({
+                        include: { _count: { select: { Questions: true } } }
+                    });
+                    const availableCategories = cats.map(c => ({
+                        name: c.name,
+                        count: c._count.Questions
+                    }));
+                    if (callback) callback({ success: true, availableCategories });
+                } catch (e) {
+                    console.error("Failed to fetch categories:", e);
+                    if (callback) callback({ success: false, availableCategories: [] });
+                }
             });
 
             socket.on('disconnect', () => {
@@ -106,16 +130,50 @@ export class RoomManager {
             mode: 'STANDARD',
             timerState: null,
             currentMultiplier: 2.0,
-            currentMinWagerPercentage: 10
+            currentMinWagerPercentage: 10,
+            totalQuestions: 0,
+            survivorRound: 0
         });
         socket.join(roomCode);
         console.log(`Room created: ${roomCode} by ${socket.id}`);
         return hostId;
     }
 
-    joinRoom(socket: Socket, roomCode: string, playerName: string): { success: boolean, playerId?: string } {
+    kickPlayer(socket: Socket, roomCode: string, playerId: string): boolean {
+        const room = this.rooms.get(roomCode);
+        if (!room || room.hostSocketId !== socket.id || room.state !== 'LOBBY') return false;
+
+        const player = room.players[playerId];
+        if (player) {
+            this.io.to(player.socketId).emit('kicked');
+            delete room.players[playerId];
+            this.io.to(roomCode).emit('playerKicked', { playerId });
+            return true;
+        }
+        return false;
+    }
+
+    joinRoom(socket: Socket, roomCode: string, playerName: string): { success: boolean, playerId?: string, spectator?: boolean, roomState?: any } {
         const room = this.rooms.get(roomCode);
         if (!room) return { success: false };
+
+        if (room.state !== 'LOBBY') {
+            socket.join(roomCode);
+            return {
+                success: true,
+                spectator: true,
+                roomState: {
+                    state: room.state,
+                    players: room.players,
+                    currentMultiplier: room.currentMultiplier,
+                    currentMinWagerPercentage: room.currentMinWagerPercentage,
+                    totalQuestions: room.totalQuestions,
+                    survivorRound: room.survivorRound,
+                    questionQueue: room.questionQueue,
+                    currentQuestionIndex: room.currentQuestionIndex
+                }
+            };
+        }
 
         const playerId = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
@@ -127,7 +185,8 @@ export class RoomManager {
             currentWager: 0,
             isCorrect: null,
             hasWagered: false,
-            hasAnswered: false
+            hasAnswered: false,
+            isAllIn: false
         };
 
         room.players[playerId] = player;
@@ -153,7 +212,9 @@ export class RoomManager {
                 currentQuestionIndex: room.currentQuestionIndex,
                 mode: room.mode,
                 currentMultiplier: room.currentMultiplier,
-                currentMinWagerPercentage: room.currentMinWagerPercentage
+                currentMinWagerPercentage: room.currentMinWagerPercentage,
+                totalQuestions: room.totalQuestions,
+                survivorRound: room.survivorRound
             }
         };
     }
@@ -174,30 +235,48 @@ export class RoomManager {
                 state: room.state,
                 players: room.players,
                 currentMultiplier: room.currentMultiplier,
-                currentMinWagerPercentage: room.currentMinWagerPercentage
+                currentMinWagerPercentage: room.currentMinWagerPercentage,
+                totalQuestions: room.totalQuestions,
+                survivorRound: room.survivorRound
             }
         };
     }
 
-    async startGame(socket: Socket, roomCode: string, mode: 'STANDARD' | 'SURVIVOR', numQuestions: number): Promise<boolean> {
+    async startGame(socket: Socket, roomCode: string, mode: 'STANDARD' | 'SURVIVOR', numQuestions: number, selectedCategories: string[] = []): Promise<boolean> {
         const room = this.rooms.get(roomCode);
         if (!room || room.hostSocketId !== socket.id) return false;
 
         // Reset correct answers array on start explicitly just in case
         room.correctAnswers = [];
 
+        // Build Where clause for Categories
+        const whereClause = selectedCategories.length > 0
+            ? { category: { name: { in: selectedCategories } } }
+            : {};
+
         // Fetch questions from DB
         const questions = await this.prisma.question.findMany({
+            where: whereClause,
             include: { category: true, globalStats: true }
         });
 
         // Shuffle
         const shuffled = questions.sort(() => 0.5 - Math.random());
-        room.questionQueue = shuffled.slice(0, numQuestions > 0 ? numQuestions : 5);
-        room.currentQuestionIndex = 0;
-        room.mode = mode;
 
-        this.startNextQuestion(roomCode);
+        room.mode = mode;
+        room.survivorRound = 0;
+
+        if (mode === 'SURVIVOR') {
+            room.questionQueue = shuffled;
+            room.totalQuestions = 0; // Infinity conceptually
+        } else {
+            room.questionQueue = shuffled.slice(0, numQuestions > 0 ? numQuestions : 5);
+            room.totalQuestions = numQuestions > 0 ? numQuestions : 5;
+        }
+
+        room.currentQuestionIndex = 0;
+
+        void this.startNextQuestion(roomCode);
         return true;
     }
 
@@ -211,6 +290,8 @@ export class RoomManager {
         room.currentQuestionIndex = 0;
         room.correctAnswers = [];
         room.questionQueue = [];
+        room.totalQuestions = 0;
+        room.survivorRound = 0;
 
         for (const playerId in room.players) {
             const player = room.players[playerId];
@@ -219,6 +300,7 @@ export class RoomManager {
             player.currentWager = 0;
             player.hasWagered = false;
             player.hasAnswered = false;
+            player.isAllIn = false;
         }
 
         this.io.to(roomCode).emit('stateChanged', {
@@ -228,22 +310,40 @@ export class RoomManager {
         return true;
     }
 
-    startNextQuestion(roomCode: string) {
+    async startNextQuestion(roomCode: string) {
         const room = this.rooms.get(roomCode);
         if (!room) return;
 
         if (room.timerState) clearTimeout(room.timerState);
 
-        // Check active players for survivor mode
+        // Check active players for survivor mode AND standard mode
         const activePlayers = Object.values(room.players).filter(p => p.score > 0);
-        if (room.mode === 'SURVIVOR' && activePlayers.length <= 1) {
+
+        // If NO ONE has a score > 0, end game immediately to prevent empty loops
+        if (activePlayers.length === 0) {
+            this.endGame(roomCode);
+            return;
+        }
+
+        const totalPlayers = Object.keys(room.players).length;
+
+        // In multiplayer, if everyone else bankrupts, the last person standing wins instantly
+        const isMultiplayerWinner = totalPlayers > 1 && activePlayers.length <= 1;
+
+        if (isMultiplayerWinner || (room.mode === 'SURVIVOR' && activePlayers.length === 0)) {
             this.endGame(roomCode);
             return;
         }
 
         if (room.currentQuestionIndex >= room.questionQueue.length) {
-            this.endGame(roomCode);
-            return;
+            if (room.mode === 'SURVIVOR') {
+                const questions = await this.prisma.question.findMany({ include: { category: true, globalStats: true } });
+                room.questionQueue = questions.sort(() => 0.5 - Math.random());
+                room.currentQuestionIndex = 0;
+            } else {
+                this.endGame(roomCode);
+                return;
+            }
         }
 
         const question = room.questionQueue[room.currentQuestionIndex];
@@ -254,12 +354,49 @@ export class RoomManager {
         const mult = Number(multVal.toFixed(1));
 
         room.currentMultiplier = mult;
-        // Formula: 50 / multiplier. E.g. at 2.0x, min wager is 25%. At 1.2x, min wager is 41%. At 3.0x, min wager is 16%.
+
+        // Base standard mode minimum percentage wager limit
         room.currentMinWagerPercentage = Math.min(100, Math.max(1, Math.floor(50 / mult)));
+
+        let survivorFloorAmount = 0;
+
+        if (room.mode === 'SURVIVOR') {
+            room.survivorRound++;
+
+            // Calculate absolute floor based on current leader
+            const leaderScore = Math.max(1, ...activePlayers.map(p => p.score));
+            let floorPct = 15;
+            if (room.survivorRound >= 10) floorPct = 60;
+            else if (room.survivorRound >= 7) floorPct = 40;
+            else if (room.survivorRound >= 4) floorPct = 25;
+
+            survivorFloorAmount = Math.floor(leaderScore * (floorPct / 100));
+
+            // Instant Elimination: Squeeze out players who cannot afford the floor
+            for (const p of activePlayers) {
+                if (p.score < survivorFloorAmount) {
+                    p.score = 0; // Bankrupted by the rising tide
+                }
+            }
+        }
+
+        // Re-filter active players after the rising tide elimination sweep
+        const survivingPlayers = Object.values(room.players).filter(p => p.score > 0);
+
+        // Check if the floor sweep just ended the game
+        if (survivingPlayers.length === 0 || (totalPlayers > 1 && survivingPlayers.length === 1)) {
+            this.endGame(roomCode);
+            return;
+        }
 
         room.state = 'CATEGORY_REVEAL';
         this.io.to(roomCode).emit('stateChanged', {
             newState: 'CATEGORY_REVEAL',
+            currentQuestionIndex: room.currentQuestionIndex,
+            totalQuestions: room.totalQuestions,
+            survivorRound: room.survivorRound,
+            survivorFloorAmount: survivorFloorAmount,
+            players: room.players, // Sync the new bankruptcies
             questionData: {
                 category: question.category.name,
                 multiplier: mult
@@ -339,11 +476,15 @@ export class RoomManager {
         if (!player) return false;
 
         const minWager = Math.max(1, Math.floor(player.score * (room.currentMinWagerPercentage / 100)));
-        if (player.score > 0 && (wager < minWager || wager > player.score)) return false;
+
+        // Allow normal wagers up to score, OR exactly score * 2 for ALL-IN
+        const isAllIn = wager === player.score * 2;
+        if (player.score > 0 && (wager < minWager || (wager > player.score && !isAllIn))) return false;
 
         player.currentWager = wager;
+        player.isAllIn = isAllIn;
         player.hasWagered = true;
-        this.io.to(room.hostSocketId).emit('playerWagered', { playerId: player.id, wager });
+        this.io.to(room.hostSocketId).emit('playerWagered', { playerId: player.id, wager, isAllIn });
 
         // Fast forward if everyone active wagered
         const activePlayers = Object.values(room.players).filter(p => p.score > 0);
@@ -416,6 +557,7 @@ export class RoomManager {
             if (player.score <= 0) continue; // skipped playing
 
             if (player.isCorrect) {
+                // currentWager already contains score*2 if all-in
                 player.score += (player.currentWager * volatilityMultiplier * slayerBonus);
             } else if (player.isCorrect === false) {
                 player.score -= player.currentWager;
@@ -439,19 +581,28 @@ export class RoomManager {
             room.players[playerId].currentWager = 0;
             room.players[playerId].hasWagered = false;
             room.players[playerId].hasAnswered = false;
+            room.players[playerId].isAllIn = false;
         }
 
         room.currentQuestionIndex++;
 
+        const totalPlayersCount = Object.keys(room.players).length;
         const activePlayersAfter = Object.values(room.players).filter(p => p.score > 0);
-        const shouldEndGame = Object.keys(room.players).length > 1 && activePlayersAfter.length <= 1;
+        const isMultiplayerWinner = totalPlayersCount > 1 && activePlayersAfter.length <= 1;
 
-        // 7s to show results, then next question or game over
+        const isSurvivorOver = room.mode === 'SURVIVOR' && (isMultiplayerWinner || activePlayersAfter.length === 0);
+        const isStandardOverEarly = room.mode !== 'SURVIVOR' && (isMultiplayerWinner || activePlayersAfter.length === 0);
+        const isStandardFinished = room.mode !== 'SURVIVOR' && room.currentQuestionIndex >= room.questionQueue.length;
+
+        const shouldEndGame = isSurvivorOver || isStandardOverEarly || isStandardFinished;
+
+        // Give them 7s to read the results, UNLESS everyone is eliminated, then maybe just jump to GAME_OVER?
+        // Actually, 7 seconds to show the final negative delta is fine, but we must *definitely* end the game.
         room.timerState = setTimeout(() => {
-            if (shouldEndGame || room.currentQuestionIndex >= room.questionQueue.length) {
+            if (shouldEndGame) {
                 this.endGame(roomCode);
             } else {
-                this.startNextQuestion(roomCode);
+                void this.startNextQuestion(roomCode);
             }
         }, 7000);
     }
