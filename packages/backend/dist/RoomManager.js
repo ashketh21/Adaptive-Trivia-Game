@@ -475,6 +475,25 @@ class RoomManager {
             player.score = Math.floor(player.score); // keep clean integers
         }
         const slayerBonusWinner = slayerBonus > 1 ? room.correctAnswers[0] : null;
+        // --- ADAPTIVE TRIVIA UPDATE ---
+        // Save the stats back to the database to shift the global multiplier for future games
+        const totalAttemptsThisRound = activePlayers.filter(p => p.hasAnswered).length;
+        const totalCorrectThisRound = room.correctAnswers.length;
+        if (totalAttemptsThisRound > 0) {
+            void this.prisma.globalStats.upsert({
+                where: { questionId: question.id },
+                update: {
+                    totalAttempts: { increment: totalAttemptsThisRound },
+                    totalCorrect: { increment: totalCorrectThisRound }
+                },
+                create: {
+                    questionId: question.id,
+                    totalAttempts: totalAttemptsThisRound,
+                    totalCorrect: totalCorrectThisRound
+                }
+            }).catch(e => console.error("Failed to update global stats:", e));
+        }
+        // ------------------------------
         this.io.to(roomCode).emit('resultsCalculated', {
             players: room.players,
             slayerBonusApplied: slayerBonus > 1,
