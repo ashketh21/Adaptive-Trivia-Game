@@ -44,6 +44,10 @@ next-env.d.ts
 .agents/
 skills-lock.json
 
-# IDE
+# IDE & AI Assistants
 .vscode/
 .idea/
+.codex/
+.cursor/
+.gemini/
+.zed/
