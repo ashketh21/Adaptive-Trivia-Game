@@ -4,23 +4,34 @@ import { useEffect, useState } from "react";
 import { socket } from "../lib/socket";
 import { QRCodeSVG } from "qrcode.react";
 
+const OPTION_LETTERS = ["A", "B", "C", "D"];
+
 export default function HostDashboard() {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [gameState, setGameState] = useState<string>("LOBBY");
   const [players, setPlayers] = useState<any[]>([]);
-  const [tickerNews, setTickerNews] = useState<string>("VOLATILITY ENGINE ONLINE // WAITING FOR PLAYERS TO JOIN //");
+  const [tickerNews, setTickerNews] = useState<string>(
+    "VOLATILITY ENGINE FLOOR OPEN  ·  ADMITTING INVESTORS  ·  WAGER WITH CONVICTION  ·  "
+  );
   const [slayerWinnerName, setSlayerWinnerName] = useState<string | null>(null);
 
   // Phase 5 Automation State
   const [gameMode, setGameMode] = useState<"STANDARD" | "SURVIVOR">("STANDARD");
   const [numQuestions, setNumQuestions] = useState<number>(3);
   const [currentQuestionData, setCurrentQuestionData] = useState<any>(null);
-  const [questionProgress, setQuestionProgress] = useState<{ current: number, total: number, survivorRound: number }>({ current: 0, total: 0, survivorRound: 0 });
+  const [questionProgress, setQuestionProgress] = useState<{
+    current: number;
+    total: number;
+    survivorRound: number;
+  }>({ current: 0, total: 0, survivorRound: 0 });
   const [survivorFloorAmount, setSurvivorFloorAmount] = useState<number>(0);
 
-  const [availableCategories, setAvailableCategories] = useState<{ name: string, count: number }[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<
+    { name: string; count: number }[]
+  >([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showSectors, setShowSectors] = useState<boolean>(false);
+  const [showRules, setShowRules] = useState<boolean>(false);
 
   const [endTime, setEndTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -52,11 +63,12 @@ export default function HostDashboard() {
           localStorage.setItem("volatility_roomCode", res.roomCode);
           localStorage.setItem("volatility_hostId", res.hostId);
 
-          // Fetch Categories
           socket.emit("requestCategories", (catRes: any) => {
             if (catRes.success && catRes.availableCategories) {
               setAvailableCategories(catRes.availableCategories);
-              setSelectedCategories(catRes.availableCategories.map((c: any) => c.name)); // Select all by default
+              setSelectedCategories(
+                catRes.availableCategories.map((c: any) => c.name)
+              );
             }
           });
         }
@@ -64,50 +76,78 @@ export default function HostDashboard() {
     };
 
     if (savedRoomCode && savedHostId) {
-      socket.emit("reconnectHost", { roomCode: savedRoomCode, hostId: savedHostId }, (res: any) => {
-        if (res.success) {
-          console.log("Host reconnected", res);
-          setRoomCode(savedRoomCode);
-          const rs = res.roomState;
-          if (rs) {
-            setGameState(rs.state);
-            setPlayers(Object.values(rs.players));
-            setGameMode(rs.mode);
-            if (rs.state === "LOBBY") {
-              // Fetch Categories on reconnect if in LOBBY state
-              socket.emit("requestCategories", (catRes: any) => {
-                if (catRes.success && catRes.availableCategories) {
-                  setAvailableCategories(catRes.availableCategories);
-                  setSelectedCategories(catRes.availableCategories.map((c: any) => c.name));
-                }
-              });
+      socket.emit(
+        "reconnectHost",
+        { roomCode: savedRoomCode, hostId: savedHostId },
+        (res: any) => {
+          if (res.success) {
+            console.log("Host reconnected", res);
+            setRoomCode(savedRoomCode);
+            const rs = res.roomState;
+            if (rs) {
+              setGameState(rs.state);
+              setPlayers(Object.values(rs.players));
+              setGameMode(rs.mode);
+              if (rs.state === "LOBBY") {
+                socket.emit("requestCategories", (catRes: any) => {
+                  if (catRes.success && catRes.availableCategories) {
+                    setAvailableCategories(catRes.availableCategories);
+                    setSelectedCategories(
+                      catRes.availableCategories.map((c: any) => c.name)
+                    );
+                  }
+                });
+              }
+              if (
+                rs.state === "CATEGORY_REVEAL" &&
+                rs.questionQueue &&
+                rs.questionQueue[rs.currentQuestionIndex]
+              ) {
+                setCurrentQuestionData({
+                  category:
+                    rs.questionQueue[rs.currentQuestionIndex].category.name,
+                  multiplier: rs.currentMultiplier,
+                });
+              } else if (
+                rs.state === "QUESTION_LIVE" &&
+                rs.questionQueue &&
+                rs.questionQueue[rs.currentQuestionIndex]
+              ) {
+                setCurrentQuestionData((prev: any) => ({
+                  ...prev,
+                  text: rs.questionQueue[rs.currentQuestionIndex].text,
+                  options: rs.questionQueue[rs.currentQuestionIndex].options,
+                  multiplier: rs.currentMultiplier,
+                }));
+              }
+              if (rs.totalQuestions !== undefined) {
+                setQuestionProgress({
+                  current: rs.currentQuestionIndex + 1,
+                  total: rs.totalQuestions,
+                  survivorRound: rs.survivorRound || 0,
+                });
+              }
             }
-            if (rs.state === "CATEGORY_REVEAL" && rs.questionQueue && rs.questionQueue[rs.currentQuestionIndex]) {
-              setCurrentQuestionData({ category: rs.questionQueue[rs.currentQuestionIndex].category.name, multiplier: rs.currentMultiplier });
-            } else if (rs.state === 'QUESTION_LIVE' && rs.questionQueue && rs.questionQueue[rs.currentQuestionIndex]) {
-              setCurrentQuestionData((prev: any) => ({ ...prev, text: rs.questionQueue[rs.currentQuestionIndex].text, options: rs.questionQueue[rs.currentQuestionIndex].options, multiplier: rs.currentMultiplier }));
-            }
-            if (rs.totalQuestions !== undefined) {
-              setQuestionProgress({ current: rs.currentQuestionIndex + 1, total: rs.totalQuestions, survivorRound: rs.survivorRound || 0 });
-            }
+          } else {
+            localStorage.removeItem("volatility_roomCode");
+            localStorage.removeItem("volatility_hostId");
+            initRoom();
           }
-        } else {
-          localStorage.removeItem("volatility_roomCode");
-          localStorage.removeItem("volatility_hostId");
-          initRoom();
         }
-      });
+      );
     } else {
       initRoom();
     }
 
     socket.on("playerJoined", (data) => {
       setPlayers((prev) => [...prev, data.player]);
-      setTickerNews(`NEW INVESTOR JOINED: ${data.player.name.toUpperCase()} // `);
+      setTickerNews(
+        `NEW SEAT ADMITTED: ${data.player.name.toUpperCase()} ($${data.player.score})  ·  FLOOR ACTIVE  ·  `
+      );
     });
 
     socket.on("playerKicked", (data) => {
-      setPlayers((prev) => prev.filter(p => p.id !== data.playerId));
+      setPlayers((prev) => prev.filter((p) => p.id !== data.playerId));
     });
 
     socket.on("stateChanged", (data) => {
@@ -126,21 +166,50 @@ export default function HostDashboard() {
         setPlayers(Object.values(data.players));
       }
       if (data.newState === "CATEGORY_REVEAL") {
-        setQuestionProgress({ current: data.currentQuestionIndex + 1, total: data.totalQuestions, survivorRound: data.survivorRound });
+        setQuestionProgress({
+          current: data.currentQuestionIndex + 1,
+          total: data.totalQuestions,
+          survivorRound: data.survivorRound,
+        });
         setSurvivorFloorAmount(data.survivorFloorAmount || 0);
-        setCurrentQuestionData({ category: data.questionData.category, multiplier: data.questionData.multiplier, text: null, options: null, correctAnswer: null });
+        setCurrentQuestionData({
+          category: data.questionData.category,
+          multiplier: data.questionData.multiplier,
+          text: null,
+          options: null,
+          correctAnswer: null,
+        });
       }
       if (data.newState === "QUESTION_LIVE") {
-        setCurrentQuestionData((prev: any) => ({ ...prev, text: data.questionText, options: data.options }));
+        setCurrentQuestionData((prev: any) => ({
+          ...prev,
+          text: data.questionText,
+          options: data.options,
+        }));
       }
     });
 
     socket.on("playerWagered", (data) => {
-      setPlayers((prev) => prev.map(p => p.id === data.playerId ? { ...p, hasWagered: true, currentWager: data.wager, isAllIn: data.isAllIn } : p));
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === data.playerId
+            ? {
+                ...p,
+                hasWagered: true,
+                currentWager: data.wager,
+                isAllIn: data.isAllIn,
+              }
+            : p
+        )
+      );
     });
 
     socket.on("playerAnswered", (data) => {
-      setPlayers((prev) => prev.map(p => p.id === data.playerId ? { ...p, hasAnswered: true } : p));
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === data.playerId ? { ...p, hasAnswered: true } : p
+        )
+      );
     });
 
     socket.on("resultsCalculated", (data) => {
@@ -154,7 +223,11 @@ export default function HostDashboard() {
         setSlayerWinnerName(null);
       }
       setPlayers(Object.values(data.players));
-      setCurrentQuestionData((prev: any) => ({ ...prev, correctAnswer: data.correctAnswer, slayerBonusApplied: data.slayerBonusApplied }));
+      setCurrentQuestionData((prev: any) => ({
+        ...prev,
+        correctAnswer: data.correctAnswer,
+        slayerBonusApplied: data.slayerBonusApplied,
+      }));
     });
 
     return () => {
@@ -168,354 +241,700 @@ export default function HostDashboard() {
   }, []);
 
   const startGame = () => {
-    socket.emit("startGame", { roomCode, mode: gameMode, numQuestions, selectedCategories });
+    socket.emit("startGame", {
+      roomCode,
+      mode: gameMode,
+      numQuestions,
+      selectedCategories,
+    });
   };
 
   const toggleCategory = (cat: string) => {
-    setSelectedCategories(prev =>
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
     );
   };
 
+  const totalPoolQuestions = availableCategories
+    .filter((c) => selectedCategories.includes(c.name))
+    .reduce((sum, c) => sum + c.count, 0);
+
+  const stateLabelMap: Record<string, string> = {
+    LOBBY: "Floor Open for Admission",
+    CATEGORY_REVEAL: "Contract Sector Announced",
+    WAGER_PERIOD: "Wager Book Open",
+    QUESTION_LIVE: "Contract Live",
+    RESULTS: "Market Settlement",
+    GAME_OVER: "Closing Bell",
+  };
+
   return (
-    <div className="min-h-screen bg-black text-white font-mono flex flex-col items-center justify-between overflow-hidden">
-      {/* HEADER */}
-      <header className="w-full flex justify-between items-center p-6 border-b-2 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-cyan-400 uppercase">
-            Volatility Engine
-          </h1>
-          <p className="text-gray-400 text-sm mt-1 tracking-widest">GLOBAL TRIVIA EXCHANGE</p>
-        </div>
-        {gameState !== "LOBBY" && gameState !== "GAME_OVER" && (
-          <div className="text-center font-bold text-gray-300 text-xl tracking-widest">
-            {gameMode === "SURVIVOR"
-              ? `SURVIVOR // ROUND ${questionProgress.survivorRound}`
-              : `QUESTION ${questionProgress.current} OF ${questionProgress.total}`}
+    <div className="min-h-screen bg-[#F1ECDE] text-[#1A1A18] paper-grain flex flex-col justify-between relative overflow-x-hidden">
+      {/* BROADSHEET MASTHEAD */}
+      <header className="w-full px-8 pt-6 pb-5 border-b border-[#C8BEA4] bg-[#F1ECDE]/95">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-end justify-between gap-6 pb-4 double-rule-b">
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#736D5A] mb-1">
+              Global Trivia Exchange · Live Floor Edition
+            </div>
+            <h1 className="font-serif text-4xl md:text-5xl font-semibold tracking-tight leading-none text-[#1A1A18]">
+              Volatility <span className="italic font-normal text-[#1B4B5A]">Engine</span>
+            </h1>
           </div>
-        )}
-        <div className="flex flex-col items-end">
-          <p className="text-gray-400 text-sm uppercase">Join Code</p>
-          <div className="text-6xl font-black text-green-400 tracking-widest" style={{ textShadow: "0 0 20px #4ade8055" }}>
-            {roomCode || "----"}
+
+          {gameState !== "LOBBY" && gameState !== "GAME_OVER" && (
+            <div className="flex flex-col items-center px-6 py-2 bg-[#E6DCC4] border border-[#C8BEA4]">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#736D5A]">
+                {stateLabelMap[gameState] || gameState.replace("_", " ")}
+              </span>
+              <span className="font-mono text-base font-semibold tracking-[0.14em] text-[#1A1A18] tabular-nums mt-0.5">
+                {gameMode === "SURVIVOR"
+                  ? `SURVIVOR · ROUND ${String(questionProgress.survivorRound).padStart(2, "0")}`
+                  : `CONTRACT ${String(questionProgress.current).padStart(2, "0")} OF ${String(questionProgress.total).padStart(2, "0")}`}
+              </span>
+            </div>
+          )}
+
+          {/* Bearer-Bond Room Code */}
+          <div className="flex items-stretch border border-[#1A1A18] bg-[#F7F3E8]">
+            <div className="px-3 py-2 bg-[#1A1A18] text-[#F1ECDE] flex flex-col justify-center">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] leading-tight">
+                Room
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] leading-tight text-[#C8BEA4]">
+                Code
+              </span>
+            </div>
+            <div className="px-5 py-1.5 font-mono text-4xl md:text-5xl font-bold tracking-[0.22em] text-[#1B4B5A] tabular-nums leading-none flex items-center">
+              {roomCode || "----"}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 w-full max-w-6xl mx-auto p-8 flex flex-col justify-center items-center">
+      {/* MAIN FLOOR */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-8 py-8 flex flex-col justify-center">
         {gameState === "LOBBY" && (
-          <div className="text-center w-full">
-            <h2 className="text-2xl text-cyan-400 uppercase tracking-widest mb-12 animate-pulse">
-              Awaiting Investors...
-            </h2>
+          <div className="w-full flex flex-col gap-8 animate-ticket">
+            {/* Two-column Broadsheet Lobby */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* LEFT: Physical Admission Ticket */}
+              <section className="lg:col-span-5 bg-[#F7F3E8] border border-[#C8BEA4] p-8 ticket-shadow relative">
+                <div className="border border-[#C8BEA4] p-6 flex flex-col items-center text-center">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#736D5A] border-b border-[#C8BEA4] pb-2 w-full">
+                    Investor Admission Ticket
+                  </span>
 
-            <div className="w-full max-w-2xl mx-auto mb-12 p-8 bg-gray-900 border-2 border-green-800 rounded-xl flex flex-col items-center gap-4">
-              <h3 className="text-xl text-white uppercase font-bold tracking-widest">Join at</h3>
-              <a href="https://adaptive-trivia-game-controller.vercel.app" target="_blank" rel="noreferrer" className="text-3xl text-cyan-400 font-black tracking-wider hover:underline">
-                adaptive-trivia-game-controller.vercel.app
-              </a>
-              <div className="p-4 bg-white rounded-lg mt-4">
-                <QRCodeSVG value="https://adaptive-trivia-game-controller.vercel.app" size={150} level="M" />
-              </div>
-            </div>
+                  <p className="font-serif italic text-2xl text-[#1A1A18] mt-5 mb-2">
+                    Scan or visit on your phone
+                  </p>
+                  <a
+                    href="https://adaptive-trivia-game-controller.vercel.app"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-sm font-semibold text-[#1B4B5A] underline underline-offset-4 decoration-[#C8BEA4] hover:decoration-[#1B4B5A] break-all"
+                  >
+                    adaptive-trivia-game-controller.vercel.app
+                  </a>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full mb-12">
-              {players.length === 0 ? (
-                <div className="col-span-full text-gray-600 italic">No connections detected. Scan QR or visit URL.</div>
-              ) : (
-                players.map((p, i) => (
-                  <div key={i} className="relative border-2 border-gray-800 bg-gray-900/50 p-6 rounded-lg text-center shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col justify-center transform transition-transform hover:scale-105 hover:border-cyan-500 group">
-                    <button
-                      onClick={() => socket.emit("kickPlayer", { roomCode, playerId: p.id })}
-                      className="absolute top-2 right-2 text-red-500 hover:text-red-400 font-black text-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Kick Investor"
-                    >
-                      ✕
-                    </button>
-                    <p className="font-bold text-xl text-white mb-2">{p.name}</p>
-                    <p className="text-green-500 font-mono tracking-widest">${p.score}</p>
+                  <div className="my-6 p-4 bg-[#FFFFFF] border border-[#1A1A18]">
+                    <QRCodeSVG
+                      value="https://adaptive-trivia-game-controller.vercel.app"
+                      size={164}
+                      level="M"
+                      fgColor="#1A1A18"
+                      bgColor="#FFFFFF"
+                    />
                   </div>
-                ))
-              )}
-            </div>
 
-            {players.length > 0 && (
-              <div className="flex flex-col items-center gap-6 mt-8 p-6 bg-gray-900 border-2 border-cyan-800 rounded-lg">
-                <div className="flex gap-4 w-full justify-center">
-                  <button
-                    onClick={() => setGameMode("STANDARD")}
-                    className={`px-6 py-3 rounded border-2 font-bold uppercase transition-colors ${gameMode === "STANDARD"
-                      ? "bg-cyan-900 border-cyan-400 text-white"
-                      : "bg-gray-800 border-gray-600 text-gray-400 hover:border-cyan-500 hover:text-cyan-200"
-                      }`}
-                  >
-                    Standard Mode
-                  </button>
-                  <button
-                    onClick={() => setGameMode("SURVIVOR")}
-                    className={`px-6 py-3 rounded border-2 font-bold uppercase transition-colors ${gameMode === "SURVIVOR"
-                      ? "bg-red-900 border-red-500 text-white"
-                      : "bg-gray-800 border-gray-600 text-gray-400 hover:border-red-500 hover:text-red-200"
-                      }`}
-                  >
-                    Survivor Mode
-                  </button>
+                  <div className="w-full pt-4 border-t border-[#C8BEA4] flex items-center justify-between font-mono text-xs text-[#736D5A] uppercase tracking-[0.16em]">
+                    <span>Starting Capital</span>
+                    <span className="text-[#1A1A18] font-semibold tabular-nums">$1,000</span>
+                  </div>
                 </div>
-                {gameMode === "STANDARD" && (
-                  <div className="flex gap-4 items-center">
-                    <span className="text-gray-400 font-bold uppercase">Questions:</span>
-                    <input type="number" min="1" max="20" value={numQuestions} onChange={(e) => setNumQuestions(Number(e.target.value))} className="w-20 p-2 text-center text-xl font-black bg-black border-2 border-cyan-500 text-cyan-400" />
+              </section>
+
+              {/* RIGHT: Floor Roster + Exchange Controls */}
+              <section className="lg:col-span-7 flex flex-col gap-6">
+                <div className="flex items-baseline justify-between border-b border-[#1A1A18] pb-3">
+                  <div>
+                    <h2 className="font-serif text-3xl font-semibold text-[#1A1A18]">
+                      Floor <span className="italic font-normal">Roster</span>
+                    </h2>
+                  </div>
+                  <span className="font-mono text-xs uppercase tracking-[0.18em] text-[#736D5A] tabular-nums">
+                    {players.length} {players.length === 1 ? "Seat" : "Seats"} Active
+                  </span>
+                </div>
+
+                {/* Investor Ledger Grid */}
+                {players.length === 0 ? (
+                  <div className="bg-[#E6DCC4]/60 border border-[#C8BEA4] p-10 text-center">
+                    <p className="font-serif italic text-2xl text-[#736D5A]">
+                      Awaiting the opening bell...
+                    </p>
+                    <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#736D5A] mt-3">
+                      Enter code <span className="text-[#1B4B5A] font-semibold">{roomCode || "----"}</span> on your controller to take a seat
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {players.map((p, i) => (
+                      <div
+                        key={p.id || i}
+                        className="relative bg-[#F7F3E8] border border-[#C8BEA4] p-4 flex flex-col justify-between group hover:border-[#1B4B5A] transition-colors ticket-shadow-sm"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#736D5A] tabular-nums">
+                            SEAT {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <button
+                            onClick={() =>
+                              socket.emit("kickPlayer", {
+                                roomCode,
+                                playerId: p.id,
+                              })
+                            }
+                            className="font-mono text-xs text-[#736D5A] hover:text-[#A04A2A] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity px-1 cursor-pointer"
+                            title="Remove Investor"
+                            aria-label={`Remove ${p.name}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <p className="font-serif text-xl font-semibold text-[#1A1A18] truncate">
+                          {p.name}
+                        </p>
+                        <p className="font-mono text-sm font-semibold text-[#1B4B5A] tabular-nums mt-1">
+                          ${p.score.toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {availableCategories.length > 0 && (
-                  <div className="w-full mt-6 flex flex-col items-center">
-                    <button
-                      onClick={() => setShowSectors(!showSectors)}
-                      className="text-cyan-400 uppercase tracking-widest font-bold mb-2 border border-cyan-800 px-4 py-2 rounded hover:bg-cyan-900/30 transition-colors flex items-center gap-2"
-                    >
-                      {showSectors ? '▼ Hide Market Sectors' : '▶ Configure Market Sectors'}
-                      <span className="bg-cyan-900 text-white px-2 py-0.5 rounded text-xs ml-2">
-                        {selectedCategories.length} / {availableCategories.length} Active
-                      </span>
-                    </button>
+                {/* Exchange Controls (once at least 1 player joins) */}
+                {players.length > 0 && (
+                  <div className="bg-[#E6DCC4] border border-[#C8BEA4] p-6 flex flex-col gap-5">
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#C8BEA4] pb-4">
+                      {/* Mode Switcher */}
+                      <div className="flex border border-[#1A1A18] bg-[#F1ECDE]">
+                        <button
+                          onClick={() => setGameMode("STANDARD")}
+                          className={`px-5 py-2.5 font-mono text-xs uppercase tracking-[0.16em] font-semibold transition-colors cursor-pointer ${
+                            gameMode === "STANDARD"
+                              ? "bg-[#1B4B5A] text-[#F1ECDE]"
+                              : "text-[#1A1A18] hover:bg-[#E6DCC4]"
+                          }`}
+                        >
+                          Standard Market
+                        </button>
+                        <button
+                          onClick={() => setGameMode("SURVIVOR")}
+                          className={`px-5 py-2.5 font-mono text-xs uppercase tracking-[0.16em] font-semibold transition-colors cursor-pointer border-l border-[#1A1A18] ${
+                            gameMode === "SURVIVOR"
+                              ? "bg-[#A04A2A] text-[#F1ECDE]"
+                              : "text-[#1A1A18] hover:bg-[#E6DCC4]"
+                          }`}
+                        >
+                          Survivor Squeeze
+                        </button>
+                      </div>
 
-                    <div className="text-gray-400 text-sm font-bold tracking-widest mb-4">
-                      Total Questions in Pool: <span className="text-green-400">{availableCategories.filter(c => selectedCategories.includes(c.name)).reduce((sum, c) => sum + c.count, 0)}</span>
+                      {gameMode === "STANDARD" && (
+                        <div className="flex items-center gap-3">
+                          <label
+                            htmlFor="numQuestions"
+                            className="font-mono text-xs uppercase tracking-[0.16em] text-[#736D5A]"
+                          >
+                            Contracts
+                          </label>
+                          <input
+                            id="numQuestions"
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={numQuestions}
+                            onChange={(e) =>
+                              setNumQuestions(Number(e.target.value))
+                            }
+                            className="w-20 py-2 px-3 text-center font-mono text-lg font-bold bg-[#F7F3E8] border border-[#1A1A18] text-[#1A1A18] tabular-nums focus:outline-none focus:border-[#1B4B5A]"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {showSectors && (
-                      <>
-                        <div className="flex justify-center gap-6 w-full mb-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-t border-cyan-800/50 pt-4">
-                          <button onClick={() => setSelectedCategories(availableCategories.map(c => c.name))} className="hover:text-white transition-colors border border-gray-600 px-3 py-1 rounded">Select All</button>
-                          <button onClick={() => setSelectedCategories([])} className="hover:text-white transition-colors border border-gray-600 px-3 py-1 rounded">Deselect All</button>
+                    {/* Market Sectors Drawer */}
+                    {availableCategories.length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            onClick={() => setShowSectors(!showSectors)}
+                            className="font-mono text-xs uppercase tracking-[0.16em] font-semibold text-[#1B4B5A] hover:underline underline-offset-4 cursor-pointer flex items-center gap-2"
+                          >
+                            <span>{showSectors ? "−" : "+"}</span>
+                            <span>
+                              {showSectors
+                                ? "Hide Market Sectors"
+                                : "Configure Market Sectors"}
+                            </span>
+                            <span className="px-2 py-0.5 bg-[#F7F3E8] border border-[#C8BEA4] text-[#1A1A18] tabular-nums">
+                              {selectedCategories.length} / {availableCategories.length}
+                            </span>
+                          </button>
+                          <span className="font-mono text-xs text-[#736D5A] uppercase tracking-[0.14em] tabular-nums">
+                            Pool: <strong className="text-[#1A1A18]">{totalPoolQuestions}</strong> Questions
+                          </span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                          {availableCategories.map(cat => (
-                            <div
-                              key={cat.name}
-                              onClick={() => toggleCategory(cat.name)}
-                              className={`p-3 text-sm font-bold border rounded cursor-pointer transition-colors flex flex-col justify-center ${selectedCategories.includes(cat.name) ? 'bg-cyan-900/50 border-cyan-500 text-cyan-50' : 'bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-500'}`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="truncate pr-2" title={cat.name}>{cat.name.replace('Entertainment: ', '').replace('Science: ', '')}</span>
-                                {selectedCategories.includes(cat.name) && <span className="text-cyan-400">✓</span>}
-                              </div>
-                              <span className="text-xs opacity-60 mt-1">{cat.count} Questions</span>
+
+                        {showSectors && (
+                          <div className="pt-3 border-t border-[#C8BEA4]">
+                            <div className="flex items-center gap-4 mb-3 font-mono text-[11px] uppercase tracking-[0.16em]">
+                              <button
+                                onClick={() =>
+                                  setSelectedCategories(
+                                    availableCategories.map((c) => c.name)
+                                  )
+                                }
+                                className="px-3 py-1 border border-[#1A1A18] bg-[#F7F3E8] hover:bg-[#1A1A18] hover:text-[#F1ECDE] transition-colors cursor-pointer"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => setSelectedCategories([])}
+                                className="px-3 py-1 border border-[#C8BEA4] bg-[#F1ECDE] text-[#736D5A] hover:border-[#1A1A18] hover:text-[#1A1A18] transition-colors cursor-pointer"
+                              >
+                                Clear All
+                              </button>
                             </div>
-                          ))}
-                        </div>
-                      </>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                              {availableCategories.map((cat) => {
+                                const active = selectedCategories.includes(
+                                  cat.name
+                                );
+                                return (
+                                  <button
+                                    key={cat.name}
+                                    type="button"
+                                    onClick={() => toggleCategory(cat.name)}
+                                    className={`p-2.5 text-left border transition-colors cursor-pointer flex flex-col justify-between ${
+                                      active
+                                        ? "bg-[#F7F3E8] border-[#1B4B5A] text-[#1A1A18]"
+                                        : "bg-[#F1ECDE]/60 border-[#C8BEA4] text-[#736D5A] hover:border-[#736D5A]"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span
+                                        className="font-serif text-sm font-medium leading-snug truncate"
+                                        title={cat.name}
+                                      >
+                                        {cat.name
+                                          .replace("Entertainment: ", "")
+                                          .replace("Science: ", "")}
+                                      </span>
+                                      <span className="font-mono text-xs text-[#1B4B5A]">
+                                        {active ? "✓" : ""}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#736D5A] mt-1 tabular-nums">
+                                      {cat.count} Qs
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
+
+                    <button
+                      onClick={startGame}
+                      className="w-full py-4 bg-[#1B4B5A] hover:bg-[#143945] active:translate-y-px text-[#F1ECDE] font-mono text-base font-semibold uppercase tracking-[0.24em] transition-all cursor-pointer border border-[#1A1A18]"
+                    >
+                      Ring Opening Bell · Start Trading
+                    </button>
                   </div>
                 )}
-
-                <button
-                  onClick={startGame}
-                  className="px-12 py-4 mt-4 bg-green-500 text-black font-black text-2xl uppercase tracking-widest rounded-sm hover:bg-green-400 transition-colors shadow-[0_0_20px_rgba(34,197,94,0.4)]"
-                >
-                  Initialize Trading
-                </button>
-              </div>
-            )}
-
-            {/* Gameplay Rules */}
-            <div className="mt-12 text-left max-w-4xl mx-auto p-6 bg-gray-900/50 border border-gray-800 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-              <h3 className="text-xl font-bold text-cyan-500 uppercase tracking-widest mb-4 border-b border-gray-700 pb-2">
-                Trading Protocol
-              </h3>
-              <ol className="list-decimal list-inside text-gray-400 space-y-3 font-medium text-lg">
-                <li><span className="text-cyan-300 font-bold uppercase tracking-wider">Sector Reveal:</span> A new category and its Volatility Multiplier are announced.</li>
-                <li><span className="text-yellow-400 font-bold uppercase tracking-wider">Wager Period:</span> Investors risk capital based on confidence. (Minimums strictly enforced by the algorithm).</li>
-                <li><span className="text-white font-bold uppercase tracking-wider">Question Live:</span> Answer the contract before time expires.</li>
-                <li><span className="text-green-400 font-bold uppercase tracking-wider">Balance Updated:</span> Correct answers multiply your wager. <span className="text-red-400 font-bold">Incorrect ones lose it!</span></li>
-                <li><span className="text-red-500 font-bold uppercase tracking-wider">Slayer Bonus:</span> Being the ONLY correct investor in a &gt;2 player market automatically doubles your payout!</li>
-                <li><span className="text-orange-500 font-bold uppercase tracking-wider">Survivor Squeeze (Survivor Mode Only):</span> A rising tide floor mathematically eliminates players whose total balance drops beneath it at the start of a round.</li>
-              </ol>
+              </section>
             </div>
+
+            {/* Compact Collapsible Trading Protocol Strip */}
+            <section className="border-t border-[#C8BEA4] pt-4">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setShowRules(!showRules)}
+                  className="font-mono text-xs uppercase tracking-[0.2em] text-[#736D5A] hover:text-[#1A1A18] transition-colors cursor-pointer flex items-center gap-2"
+                >
+                  <span>{showRules ? "−" : "+"}</span>
+                  <span>Exchange Rules &amp; Trading Protocol</span>
+                </button>
+                <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#736D5A] hidden sm:inline">
+                  Sector Reveal → Wager → Contract Live → Settlement
+                </span>
+              </div>
+
+              {showRules && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-5 pt-5 border-t border-[#C8BEA4]">
+                  <div>
+                    <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#1B4B5A] font-semibold mb-1">
+                      01 · Sector &amp; Volatility
+                    </div>
+                    <p className="font-serif text-base text-[#1A1A18] leading-relaxed">
+                      Each contract announces a sector and its dynamic Volatility Multiplier. Wager based on your conviction before the book closes.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#A04A2A] font-semibold mb-1">
+                      02 · Settlement &amp; Slayer Bonus
+                    </div>
+                    <p className="font-serif text-base text-[#1A1A18] leading-relaxed">
+                      Correct calls multiply your stake; misses forfeit it. Be the <em>only</em> correct investor in a 3+ player floor to double your payout.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#736D5A] font-semibold mb-1">
+                      03 · Survivor Squeeze
+                    </div>
+                    <p className="font-serif text-base text-[#1A1A18] leading-relaxed">
+                      In Survivor Mode, a rising solvency floor eliminates any portfolio that opens a round below the threshold.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </section>
           </div>
         )}
 
-        {/* Live Game Content */}
+        {/* ACTIVE GAMEPLAY STATES */}
         {gameState !== "LOBBY" && (
-          <div className="text-center flex flex-col items-center gap-6 w-full">
-            <h2 className={`text-5xl font-black uppercase mb-2 animate-pulse ${gameState === 'GAME_OVER' ? 'text-yellow-400' : 'text-cyan-400'}`}>{gameState.replace('_', ' ')}</h2>
+          <div className="w-full flex flex-col gap-8 animate-ticket">
+            {/* CENTRAL PHYSICAL CONTRACT CARD */}
+            <section className="w-full bg-[#F7F3E8] border border-[#1A1A18] p-8 md:p-10 ticket-shadow relative">
+              {/* Top folio bar */}
+              <div className="flex items-center justify-between border-b border-[#C8BEA4] pb-3 mb-8 font-mono text-xs uppercase tracking-[0.2em] text-[#736D5A]">
+                <span>{stateLabelMap[gameState] || gameState}</span>
+                {currentQuestionData?.category && gameState !== "GAME_OVER" && (
+                  <span className="text-[#1A1A18] font-semibold">
+                    {currentQuestionData.category}
+                    {currentQuestionData.multiplier
+                      ? ` · ${currentQuestionData.multiplier}x`
+                      : ""}
+                  </span>
+                )}
+              </div>
 
-            {/* Dynamic Content Area based on State */}
-            <div className={`min-h-[200px] w-full max-w-4xl p-8 border-2 border-dashed flex flex-col items-center justify-center bg-gray-900/40 transition-colors ${gameState === 'GAME_OVER' ? 'border-yellow-500' : 'border-gray-600'}`}>
+              {/* CATEGORY_REVEAL */}
               {gameState === "CATEGORY_REVEAL" && currentQuestionData && (
-                <>
-                  <h3 className="text-gray-400 font-bold uppercase tracking-widest mb-4">Incoming Contract Sector:</h3>
-                  <div className="text-6xl font-black text-white uppercase text-center mb-6">{currentQuestionData.category}</div>
-                  <div className="text-3xl text-red-500 font-black">Volatility Multiplier: {currentQuestionData.multiplier}x</div>
-                </>
+                <div className="py-6 flex flex-col items-center text-center gap-6">
+                  <span className="font-mono text-xs uppercase tracking-[0.24em] text-[#736D5A]">
+                    Incoming Contract Sector
+                  </span>
+                  <h2 className="font-serif italic text-5xl md:text-7xl font-semibold text-[#1A1A18] leading-tight max-w-4xl">
+                    {currentQuestionData.category}
+                  </h2>
+                  <div className="mt-2 px-6 py-3 border-2 border-[#A04A2A] bg-[#F1ECDE] animate-stamp">
+                    <span className="font-mono text-xs uppercase tracking-[0.22em] text-[#736D5A] block">
+                      Volatility Multiplier
+                    </span>
+                    <span className="font-mono text-4xl md:text-5xl font-bold text-[#A04A2A] tabular-nums">
+                      {currentQuestionData.multiplier}x
+                    </span>
+                  </div>
+                </div>
               )}
+
+              {/* WAGER_PERIOD */}
               {gameState === "WAGER_PERIOD" && (
-                <div className="flex flex-col items-center gap-4 min-w-full">
-                  {currentQuestionData && (
-                    <div className="bg-gray-800/80 px-6 py-2 rounded-full border border-gray-600 mb-4 flex gap-4 text-sm font-bold tracking-widest items-center">
-                      <span className="text-gray-300 uppercase">{currentQuestionData.category}</span>
-                      <span className="text-gray-600">|</span>
-                      <span className="text-red-400 uppercase">{currentQuestionData.multiplier}x Multiplier</span>
+                <div className="py-4 flex flex-col items-center text-center gap-6">
+                  {gameMode === "SURVIVOR" && survivorFloorAmount > 0 && (
+                    <div className="px-6 py-3 border border-[#A04A2A] bg-[#A04A2A]/10 flex flex-wrap items-center justify-center gap-3">
+                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#A04A2A] font-semibold">
+                        Survivor Solvency Floor
+                      </span>
+                      <span className="font-mono text-xl font-bold text-[#A04A2A] tabular-nums">
+                        ${survivorFloorAmount.toLocaleString()}
+                      </span>
                     </div>
                   )}
-                  {gameMode === "SURVIVOR" && (
-                    <div className="bg-red-950/40 border border-red-500/50 px-6 py-2 rounded mb-2 flex flex-col items-center">
-                      <span className="text-red-400 text-sm font-black uppercase tracking-widest">Survivor Minimum Trade required to avoid bankruptcy</span>
-                      <span className="text-white text-2xl font-black">${survivorFloorAmount}</span>
-                    </div>
-                  )}
-                  <h3 className="text-4xl font-bold text-yellow-400 uppercase tracking-widest">
-                    Investors Securing Positions...
-                  </h3>
+
+                  <h2 className="font-serif italic text-4xl md:text-6xl font-normal text-[#1A1A18]">
+                    Investors Securing Positions
+                  </h2>
+                  <p className="font-mono text-xs uppercase tracking-[0.2em] text-[#736D5A]">
+                    Submit stakes on your phone before the bell
+                  </p>
+
                   {timeLeft !== null && (
-                    <div className={`text-6xl font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-gray-200'}`}>
-                      {timeLeft.toString().padStart(2, '0')}
+                    <div
+                      className={`font-mono text-7xl md:text-8xl font-bold tabular-nums leading-none mt-2 ${
+                        timeLeft <= 5 ? "text-[#A04A2A]" : "text-[#1B4B5A]"
+                      }`}
+                    >
+                      00:{timeLeft.toString().padStart(2, "0")}
                     </div>
                   )}
                 </div>
               )}
+
+              {/* QUESTION_LIVE */}
               {gameState === "QUESTION_LIVE" && currentQuestionData && (
-                <>
-                  <div className="flex justify-between items-start w-full gap-8 mb-8 border-l-4 border-cyan-500 pl-6">
-                    <h3 className="text-3xl font-black text-white text-left leading-tight flex-1">{currentQuestionData.text}</h3>
+                <div className="flex flex-col gap-8">
+                  <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+                    <h2 className="font-serif text-3xl md:text-4xl font-semibold text-[#1A1A18] leading-snug flex-1 text-left">
+                      {currentQuestionData.text}
+                    </h2>
                     {timeLeft !== null && (
-                      <div className={`text-5xl font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-cyan-400'}`}>
-                        {timeLeft.toString().padStart(2, '0')}
+                      <div
+                        className={`px-5 py-3 border border-[#1A1A18] bg-[#F1ECDE] font-mono text-4xl md:text-5xl font-bold tabular-nums shrink-0 ${
+                          timeLeft <= 5
+                            ? "text-[#A04A2A] border-[#A04A2A]"
+                            : "text-[#1B4B5A]"
+                        }`}
+                      >
+                        {timeLeft.toString().padStart(2, "0")}
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-4 w-full">
-                    {currentQuestionData.options?.map((opt: string, i: number) => (
-                      <div key={i} className="p-4 bg-gray-800 border border-gray-600 text-xl font-bold text-gray-200">{opt}</div>
-                    ))}
-                  </div>
-                </>
-              )}
-              {gameState === "RESULTS" && currentQuestionData && (
-                <>
-                  <h3 className="text-gray-400 font-bold uppercase tracking-widest mb-4">Correct Outcome:</h3>
-                  <div className="text-5xl font-black text-green-400 bg-green-900/30 p-6 border-2 border-green-500 uppercase rounded-lg shadow-[0_0_20px_rgba(34,197,94,0.3)]">{currentQuestionData.correctAnswer}</div>
-                </>
-              )}
-              {gameState === "GAME_OVER" && (() => {
-                const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-                const hasPositiveScore = sortedPlayers.some(p => p.score > 0);
-                const candidates = hasPositiveScore ? sortedPlayers.filter(p => p.score > 0) : sortedPlayers;
-                const topScore = candidates[0]?.score ?? 0;
-                const topPlayers = candidates.filter(p => p.score === topScore);
-                const isTie = topPlayers.length > 1 && topPlayers.length > 0;
 
-                return (
-                  <div className="flex flex-col items-center gap-6">
-                    <h3 className="text-5xl font-black text-yellow-400 uppercase tracking-widest mb-4">Trading Halted</h3>
-                    <div className="text-4xl font-bold text-white">
-                      {isTie ? 'MARKET TIE: ' : 'Top Investor: '}
-                      <span className="text-green-400">
-                        {topPlayers.length > 0 ? topPlayers.map(p => p.name).join(' & ') : 'None'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => socket.emit("returnToLobby", { roomCode })}
-                      className="px-12 py-4 mt-8 bg-cyan-600 text-black font-black text-xl uppercase tracking-widest rounded-sm hover:bg-cyan-500 pointer-events-auto"
-                    >
-                      Return to Lobby
-                    </button>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Show Player Scores updated dynamically */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full mt-6 pointer-events-none">
-              {players.map((p, i) => (
-                <div key={i} className={`border-2 p-6 rounded-lg text-center shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col relative transition-all duration-500 ${p.score <= 0 ? 'border-red-900 bg-red-950/30 opacity-50' :
-                  gameState === "RESULTS" && p.isCorrect === true ? 'border-green-500 bg-green-900/40 scale-105 animate-[pulse_2s_infinite]' :
-                    gameState === "RESULTS" && p.isCorrect === false ? 'border-red-500 bg-red-900/40 opacity-75' :
-                      gameState === "GAME_OVER" && p.score > 0 ? 'border-yellow-500 bg-yellow-900/40 scale-105' :
-                        'border-gray-800 bg-gray-900/50'
-                  }`}>
-                  <p className="font-bold text-xl text-white mb-2">{p.name}</p>
-                  <p className="text-green-500 font-mono tracking-widest text-2xl">${p.score}</p>
-
-                  {/* Status Badges */}
-                  <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
-                    {p.isAllIn && gameState !== "LOBBY" && gameState !== "CATEGORY_REVEAL" && (
-                      <span className="bg-orange-600 text-white px-2 py-1 font-black text-xs shadow-[0_0_10px_rgba(234,88,12,0.8)] animate-pulse uppercase">🔥 All In</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {currentQuestionData.options?.map(
+                      (opt: string, i: number) => (
+                        <div
+                          key={i}
+                          className="flex items-stretch border border-[#C8BEA4] bg-[#F1ECDE]"
+                        >
+                          <div className="w-12 bg-[#E6DCC4] border-r border-[#C8BEA4] flex items-center justify-center font-mono text-sm font-bold text-[#736D5A] shrink-0">
+                            {OPTION_LETTERS[i] || i + 1}
+                          </div>
+                          <div className="p-4 font-serif text-xl font-medium text-[#1A1A18] text-left flex items-center">
+                            {opt}
+                          </div>
+                        </div>
+                      )
                     )}
-                    {/* Wager Period status */}
-                    {gameState === "WAGER_PERIOD" && (
-                      p.hasWagered
-                        ? <span className="bg-yellow-500 text-black px-2 py-1 font-bold text-xs shadow-md">Locked: ${p.currentWager}</span>
-                        : <span className="bg-gray-700 text-gray-300 px-2 py-1 font-bold text-xs animate-pulse opacity-50">Deciding...</span>
-                    )}
-
-                    {/* Question Live status */}
-                    {gameState === "QUESTION_LIVE" && (
-                      <>
-                        {p.hasAnswered
-                          ? <span className="bg-cyan-500 text-black px-2 py-1 font-bold text-xs shadow-md">Answered</span>
-                          : <span className="bg-gray-700 text-gray-300 px-2 py-1 font-bold text-xs animate-pulse opacity-50">Thinking...</span>}
-                        {p.currentWager > 0 && <span className="text-yellow-500 font-black text-xs font-mono mt-1">${p.currentWager}</span>}
-                      </>
-                    )}
-
-                    {/* Results status */}
-                    {gameState === "RESULTS" && p.isCorrect && <span className="text-green-400 font-black">+${Math.floor(p.currentWager * (currentQuestionData?.multiplier || 2) * (currentQuestionData?.slayerBonusApplied ? 2 : 1))}</span>}
-                    {gameState === "RESULTS" && p.isCorrect === false && <span className="text-red-500 font-black">-${p.currentWager}</span>}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* RESULTS */}
+              {gameState === "RESULTS" && currentQuestionData && (
+                <div className="py-6 flex flex-col items-center text-center gap-5">
+                  <span className="font-mono text-xs uppercase tracking-[0.24em] text-[#736D5A]">
+                    Verified Settlement Outcome
+                  </span>
+                  <div className="px-10 py-6 border-2 border-[#1B4B5A] bg-[#1B4B5A] text-[#F1ECDE] font-serif text-4xl md:text-5xl font-semibold">
+                    {currentQuestionData.correctAnswer}
+                  </div>
+                  {currentQuestionData.slayerBonusApplied && (
+                    <span className="font-mono text-xs uppercase tracking-[0.22em] text-[#A04A2A] font-semibold">
+                      Slayer Bonus Triggered · 2x Solo Payout Applied
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* GAME_OVER */}
+              {gameState === "GAME_OVER" &&
+                (() => {
+                  const sortedPlayers = [...players].sort(
+                    (a, b) => b.score - a.score
+                  );
+                  const hasPositiveScore = sortedPlayers.some(
+                    (p) => p.score > 0
+                  );
+                  const candidates = hasPositiveScore
+                    ? sortedPlayers.filter((p) => p.score > 0)
+                    : sortedPlayers;
+                  const topScore = candidates[0]?.score ?? 0;
+                  const topPlayers = candidates.filter(
+                    (p) => p.score === topScore
+                  );
+                  const isTie = topPlayers.length > 1 && topPlayers.length > 0;
+
+                  return (
+                    <div className="py-6 flex flex-col items-center text-center gap-6">
+                      <span className="font-mono text-xs uppercase tracking-[0.26em] text-[#A04A2A] font-semibold">
+                        Trading Halted · Final Settlement
+                      </span>
+                      <h2 className="font-serif italic text-5xl md:text-6xl font-semibold text-[#1A1A18]">
+                        {isTie ? "Market Tie" : "Top Investor"}
+                      </h2>
+                      <div className="font-serif text-4xl md:text-5xl font-bold text-[#1B4B5A] border-y-2 border-[#1B4B5A] py-4 px-10">
+                        {topPlayers.length > 0
+                          ? topPlayers.map((p) => p.name).join(" & ")
+                          : "None"}
+                      </div>
+                      <button
+                        onClick={() =>
+                          socket.emit("returnToLobby", { roomCode })
+                        }
+                        className="mt-4 px-10 py-4 bg-[#1A1A18] hover:bg-[#1B4B5A] text-[#F1ECDE] font-mono text-sm uppercase tracking-[0.22em] font-semibold transition-colors cursor-pointer"
+                      >
+                        Return to Exchange Lobby
+                      </button>
+                    </div>
+                  );
+                })()}
+            </section>
+
+            {/* INVESTOR PORTFOLIO LEDGER */}
+            <section className="w-full">
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#736D5A]">
+                  Live Investor Ledger
+                </span>
+                <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#736D5A] tabular-nums">
+                  {players.length} Accounts
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {players.map((p, i) => {
+                  const isBankrupt = p.score <= 0;
+                  const wonRound =
+                    gameState === "RESULTS" && p.isCorrect === true;
+                  const lostRound =
+                    gameState === "RESULTS" && p.isCorrect === false;
+                  const payoutDelta = Math.floor(
+                    p.currentWager *
+                      (currentQuestionData?.multiplier || 2) *
+                      (currentQuestionData?.slayerBonusApplied ? 2 : 1)
+                  );
+
+                  return (
+                    <div
+                      key={p.id || i}
+                      className={`p-5 border flex flex-col justify-between transition-all duration-300 ${
+                        isBankrupt
+                          ? "bg-[#E6DCC4]/50 border-[#C8BEA4] opacity-55"
+                          : wonRound
+                          ? "bg-[#F7F3E8] border-2 border-[#1B4B5A] ticket-shadow-sm"
+                          : lostRound
+                          ? "bg-[#F7F3E8] border-2 border-[#A04A2A]"
+                          : "bg-[#F7F3E8] border-[#C8BEA4]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <p className="font-serif text-xl font-semibold text-[#1A1A18] truncate">
+                          {p.name}
+                        </p>
+                        {p.isAllIn &&
+                          gameState !== "LOBBY" &&
+                          gameState !== "CATEGORY_REVEAL" && (
+                            <span className="px-2 py-0.5 border border-[#A04A2A] bg-[#A04A2A] text-[#F1ECDE] font-mono text-[10px] font-bold uppercase tracking-[0.14em] shrink-0">
+                              All In
+                            </span>
+                          )}
+                      </div>
+
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={`font-mono text-2xl font-bold tabular-nums ${
+                            isBankrupt ? "text-[#A04A2A]" : "text-[#1A1A18]"
+                          }`}
+                        >
+                          ${p.score.toLocaleString()}
+                        </span>
+
+                        {/* Status / Delta stamps */}
+                        <div className="text-right font-mono text-xs font-semibold uppercase tracking-[0.12em]">
+                          {isBankrupt ? (
+                            <span className="text-[#A04A2A]">Insolvent</span>
+                          ) : gameState === "WAGER_PERIOD" ? (
+                            p.hasWagered ? (
+                              <span className="text-[#1B4B5A] tabular-nums">
+                                Locked ${p.currentWager}
+                              </span>
+                            ) : (
+                              <span className="text-[#736D5A]">Deciding</span>
+                            )
+                          ) : gameState === "QUESTION_LIVE" ? (
+                            <div className="flex flex-col items-end">
+                              <span
+                                className={
+                                  p.hasAnswered
+                                    ? "text-[#1B4B5A]"
+                                    : "text-[#736D5A]"
+                                }
+                              >
+                                {p.hasAnswered ? "Filed" : "Pending"}
+                              </span>
+                              {p.currentWager > 0 && (
+                                <span className="text-[11px] text-[#736D5A] tabular-nums">
+                                  ${p.currentWager}
+                                </span>
+                              )}
+                            </div>
+                          ) : wonRound ? (
+                            <span className="text-[#1B4B5A] text-sm font-bold tabular-nums">
+                              +${payoutDelta.toLocaleString()}
+                            </span>
+                          ) : lostRound ? (
+                            <span className="text-[#A04A2A] text-sm font-bold tabular-nums">
+                              -${p.currentWager.toLocaleString()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           </div>
         )}
       </main>
 
-      {/* SLAYER BONUS OVERLAY - Adjusted to briefly flash */}
+      {/* SLAYER BONUS POSTER STAMP OVERLAY */}
       {gameState === "RESULTS" && slayerWinnerName && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none animate-[fadeout_3s_forwards]">
-          <div className="text-center animate-[bounce_1s_infinite]">
-            <h1 className="text-[10rem] font-black text-red-500 tracking-widest uppercase mb-4" style={{ textShadow: "0 0 60px #ef4444" }}>
-              SLAYER
-            </h1>
-            <p className="text-6xl text-white font-bold tracking-widest uppercase" style={{ textShadow: "0 0 20px #ffffff" }}>
-              {slayerWinnerName} TAKES IT ALL
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#1A1A18]/75 animate-slayer">
+          <div className="bg-[#F1ECDE] border-4 border-[#A04A2A] px-16 py-12 text-center ticket-shadow animate-stamp">
+            <span className="font-mono text-xs uppercase tracking-[0.3em] text-[#736D5A] block mb-3">
+              Solo Settlement Bonus · 2x Payout
+            </span>
+            <h2 className="font-serif italic text-8xl md:text-9xl font-bold text-[#A04A2A] leading-none">
+              Slayer
+            </h2>
+            <p className="font-mono text-2xl md:text-3xl font-bold text-[#1A1A18] uppercase tracking-[0.2em] mt-5 pt-4 border-t border-[#C8BEA4]">
+              {slayerWinnerName} Takes the Floor
             </p>
           </div>
         </div>
       )}
 
-      {/* NEWS TICKER */}
-      <div className="w-full bg-red-900 border-t-2 border-red-500 p-3 overflow-hidden whitespace-nowrap">
-        <div className="inline-block animate-[ticker_20s_linear_infinite] text-red-200 font-black tracking-widest text-lg">
+      {/* MARKET TICKER TAPE */}
+      <div className="w-full bg-[#1A1A18] text-[#F1ECDE] border-t border-[#1A1A18] py-2.5 overflow-hidden whitespace-nowrap">
+        <div className="inline-block animate-ticker font-mono text-xs uppercase tracking-[0.22em]">
           {tickerNews} {tickerNews} {tickerNews} {tickerNews}
         </div>
       </div>
 
-      {/* FOOTER */}
-      <footer className="w-full p-4 border-t-2 border-gray-900 bg-black flex flex-col items-center justify-center gap-2 text-xs text-gray-500 font-mono tracking-widest uppercase text-center relative z-10">
+      {/* COLOPHON FOOTER */}
+      <footer className="w-full px-8 py-3 bg-[#E6DCC4] border-t border-[#C8BEA4] flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-[#736D5A]">
         <p>
-          Questions seeded from <a href="https://opentdb.com" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline transition-colors">OpenTriviaDB</a>
+          Contracts seeded via{" "}
+          <a
+            href="https://opentdb.com"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#1A1A18] underline underline-offset-4 decoration-[#C8BEA4] hover:decoration-[#1A1A18]"
+          >
+            OpenTriviaDB
+          </a>
         </p>
         <p>
-          Developed and maintained by <a href="https://github.com/ashketh21" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline transition-colors">ashketh21</a>
+          Maintained by{" "}
+          <a
+            href="https://github.com/ashketh21"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#1A1A18] underline underline-offset-4 decoration-[#C8BEA4] hover:decoration-[#1A1A18]"
+          >
+            ashketh21
+          </a>
         </p>
       </footer>
-
-      {/* Inline styles for animations */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes ticker {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        @keyframes fadeout {
-          0% { opacity: 1; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); }
-          70% { opacity: 1; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); }
-          100% { opacity: 0; background: transparent; backdrop-filter: none; display: none; }
-        }
-      `}} />
     </div>
   );
 }
